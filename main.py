@@ -6,6 +6,7 @@ import functions_framework
 import json
 import random
 import time
+import re
 
 app = FastAPI()
 app.add_middleware(
@@ -70,6 +71,7 @@ def get_headers():
 
 def extract_first_product_url(soup):
     try:
+
         # Find all search result items
         items = soup.find_all("div", {"data-component-type": "s-search-result"})
         
@@ -102,23 +104,35 @@ def extract_product_info(soup, product_url):
             product["title"] = title.text.strip()
         
         # Extract product price
-        price = soup.select_one("span.a-offscreen")
-        if price:
-            product["price"] = price.text.strip()
+        price_selectors = [
+            "span.a-offscreen",
+            "span.a-price-whole",
+            "#priceblock_ourprice",
+            "#priceblock_dealprice",
+            ".a-price .a-offscreen",
+            "#corePrice_feature_div .a-price .a-offscreen"
+        ]
+        
+        for selector in price_selectors:
+            price_element = soup.select_one(selector)
+            if price_element and price_element.text.strip():
+                product["price"] = price_element.text.strip()
+                # check selector for debbugging
+                product["price_selector"] = selector
+                break
         
         # Extract product image
         images = soup.select("div.imgTagWrapper img")
         image = None
 
         for img in images:
-            if img.has_attr("atr") and "Lenovo Tab P12-2024" in img["alt"]:
+            if img.has_attr("alt") and "Lenovo Tab P12-2024" in img.get("alt", ""):
                 image = img
                 break
 
         if image:
             if image.has_attr("data-a-dynamic-image"):
                 try:
-                    import json
                     dynamic_imgs = json.loads(image["data-a-dynamic-image"])
                     if dynamic_imgs and isinstance(dynamic_imgs, dict) and len(dynamic_imgs) > 0:
                         # Sort the image URLs by size to get the highest resolution
@@ -128,8 +142,7 @@ def extract_product_info(soup, product_url):
                         
                         product["image"] = sorted_urls[0]
                         product["image_alt"] = image.get('alt', '')  # Preserve the detailed alt text
-                        # Also extract all available image sizes
-                        product["available_image_sizes"] = {url: dynamic_imgs[url] for url in dynamic_imgs}
+
                 except Exception as e:
                     # Fallback to src if JSON parsing fails
                     product["image"] = image.get('src', '')
@@ -138,33 +151,76 @@ def extract_product_info(soup, product_url):
                 # Use src attribute directly if no data-a-dynamic-image
                 product["image"] = image.get('src', '')
                 product["image_alt"] = image.get('alt', '')
-                
+                      
+        else:
+            # Fallback to any image if we can't find one with "Lenovo" in alt text
+            any_image = soup.select_one("div.imgTagWrapper img, #landingImage, #imgBlkFront")
+            if any_image:
+                product["image"] = any_image.get('src', '')
+                product["image_alt"] = any_image.get('alt', '')
+  
         
-        # Fallback to other image selectors if the specific image wasn't found
-        if "image" not in product or not product["image"]:
-            # Fallback extraction code from before...
-            pass
-        
-       
-        
-    #     # Extract ratings if available
+        # Extract rating and review count
         try:
-            rating_element = item.select_one("i.a-icon-star-small")
-            if rating_element:
-                rating_text = rating_element.text.strip()
-                product["rating"] = rating_text
-        except:
-            pass
+            import re
+            rating_span = soup.select_one("span.reviewCountTextLinkedHistogram")
+            if rating_span and "title" in rating_span.attrs:
+                rating_text = rating_span["title"]
+                rating_match = re.search(r"([\d\.]+) out of", rating_text)
+                if rating_match:
+                    product["rating"] = rating_match.group(1)
+                    product["rating_text"] = rating_text
+            
+            # Method 2: Try the a-icon-alt which often contains the rating
+            if "rating" not in product:
+                icon_alt = soup.select_one("span.a-icon-alt")
+                if icon_alt:
+                    rating_text = icon_alt.text
+                    rating_match = re.search(r"([\d\.]+) out of", rating_text)
+                    if rating_match:
+                        product["rating"] = rating_match.group(1)
+                        product["rating_text"] = rating_text
+            
+            # Method 3: Try other common rating elements
+            if "rating" not in product:
+                rating_elements = soup.select(".a-star-4-5, .a-star-5, .a-star-4")
+                for elem in rating_elements:
+                    class_str = " ".join(elem.get("class", []))
+                    if "a-star" in class_str:
+                        rating_match = re.search(r"a-star-(\d)-(\d)", class_str)
+                        if rating_match:
+                            whole = rating_match.group(1)
+                            fraction = rating_match.group(2)
+                            product["rating"] = f"{whole}.{fraction}"
+                            break
+                            
+            # Extract review count
+            reviews_count = soup.select_one("#acrCustomerReviewText")
+            if reviews_count:
+                count_text = reviews_count.text.strip()
+                count_match = re.search(r"([\d,]+)", count_text)
+                if count_match:
+                    product["review_count"] = count_match.group(1)
+        except Exception as e:
+            product["rating_extraction_error"] = str(e)
+ 
 
+        # Extract ASIN, whch is a unique identifier for Amazon products - 10 characters long
+        try:
+            import re
+            asin_match = re.search(r'/dp/([A-Z0-9]{10})/', product_url)
+            if asin_match:
+                product["asin"] = asin_match.group(1)
+
+        except Exception as e:
+            product["asin_extraction_error"] = str(e)
         
+        # DEBUGGING - save a snippet of the HTML to see structure
+        product["html_sample"] = soup.prettify()[:1000]
+
         return product
     except Exception as e:
         return {"error": str(e), "error_type": type(e).__name__}
-                        
-
-
-
-
 
 
 @app.get("/")
@@ -174,8 +230,6 @@ def amazon(query: str = Query(...)):
     for attempt in range(attempts):
         # Simulate human behavior with a small delay
         time.sleep(random.uniform(3, 6 + attempt * 2))  # Increase delay with each attempt
-
-        attempt_info = f"Attempt {attempt + 1} of {attempts}"
 
         new_session = random.random() < 0.2 # 20% chance to create a new session
         sess = requests.Session() if new_session else session
@@ -187,7 +241,8 @@ def amazon(query: str = Query(...)):
             f"https://www.amazon.com/s?k={query.replace(' ', '+')}&sprefix={query.lower().replace(' ', '+')}"
         ]
         
-        url = random.choice(url_templates)
+        # why in the code, you changed this: url = random.choice(url_templates) to this: url = url_templates[attempt % len(url_templates)]
+        url = url_templates[attempt % len(url_templates)]
         
         # Get fresh headers
         headers = get_headers()
@@ -199,48 +254,103 @@ def amazon(query: str = Query(...)):
             # Create the result object
             result = {
                 "status_code": response.status_code,
-                "url": response.url
+                "url": response.url,
+                "attempt": attempt + 1
             }
             
             # Check if the request was successful
-            if response.status_code == 200:
+            if response.status_code != 200:
+                if attempt < attempts - 1:
+                    continue
+                return {
+                    "error": f"Failed to get data: HTTP {response.status_code}",
+                    "attempt": attempt + 1,
+                }
                 # Parse the HTML
-                soup = BeautifulSoup(response.text, "html.parser")
+            soup = BeautifulSoup(response.text, "html.parser")
                 
                 # Check for blocking or captcha
-                if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]):
-                    if attempt < attempts - 1:
-                        continue
-                    
-                    result["error"] = "Anti-bot protection detected"
-                    result["content_sample"] = response.text[:500]  # First 500 chars for debugging
-                    return result
-                
-                # Extract just the first product
-                product = extract_first_product_url(soup)
-                
-                if product:
-                    result["product"] = product
-                    return result
-                else:
-                    if attempt < attempts - 1:
-                        continue
-                    result["message"] = "No products found"
-                    
-            else:
-                result["message"] = f"Failed to get data: HTTP {response.status_code}"
-                result["content_sample"] = response.text[:500]  # First 500 chars for debugging
-                return result
+            if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]):
+                if attempt < attempts - 1:
+                    continue
+                return {
+                    "error": "Anti-bot protection detected on product page",
+                    "content_sample": product_response.text[:500],  # First 500 chars for debugging
+                    "attempt": attempt + 1,
+                }
             
+# """"------------------------------- split here -------------------------------""""
+
+            # Extract just the first product
+            product_url = extract_first_product_url(soup)
+            
+            if not product_url:
+                if attempt < attempts - 1:
+                    continue
+                return {
+                    "error": "No products found",
+                    "attempt": attempt + 1,
+                }
+            
+            # Get the product details page
+            time.sleep(random.uniform(2,5)) # Delay before fetching product details
+            headers = get_headers() # Get fresh headers
+
+            product_response = sess.get(product_url, headers=headers, timeout=15)
+
+            if product_response.status_code != 200:
+                if attempt < attempts - 1:
+                    continue
+
+                return {
+                    "error": f"Failed to get product data: HTTP {product_response.status_code}",
+                    "attempt": attempt + 1,
+                }
+
+            result["product_status"] = product_response.status_code
+            result["product_url"] = product_url
+
+            soup2 = BeautifulSoup(product_response.text, "html.parser")
+                    
+            if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]):
+                if attempt < attempts - 1:
+                    continue
+
+                return {
+                    "error": "Anti-bot protection detected on product page",
+                    "content_sample": product_response.text[:500],  # First 500 chars for debugging
+                    "attempt": attempt + 1,
+                }
+            
+            product_info = extract_product_info(soup2, product_url)
+
+            if product_info:
+                result["product"] = product_info
+                return result # Success!
+            
+            if attempt < attempts - 1:
+                continue
+
+            return {
+                "error": "Failed to extract product information",
+                "attempt": attempt + 1,
+            }
+
         except Exception as e:
+            if attempt < attempts - 1:
+                continue
+
             return {
                 "error": str(e),
-                "error_type": type(e).__name__
+                "error_type": type(e).__name__,
+                "attempt": attempt + 1
             }
         
     return {
         "error": f"All {attempts} attempts failed",
+        "attempts": attempts,
     }
+
 
 @functions_framework.http
 def amazon_function(request):
