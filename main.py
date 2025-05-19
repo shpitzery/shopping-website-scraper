@@ -68,55 +68,86 @@ def get_headers():
     
     return headers
 
-def extract_first_product(soup):
+def extract_first_product_url(soup):
     try:
         # Find all search result items
         items = soup.find_all("div", {"data-component-type": "s-search-result"})
         
-        if not items:
+        if not items or len(items) == 0:
             return None
         
         # Get the first item
         item = items[0]
         
-        # Create a product dictionary
-        product = {}
-        
-        # Extract title
-        title_element = item.select_one("h2 a span")
-        if title_element:
-            product["title"] = title_element.text.strip()
-        
-        # Extract price
-        price_element = item.select_one(".a-price .a-offscreen")
-        if price_element:
-            product["price"] = price_element.text.strip()
-        else:
-            # Try alternative price selectors
-            alt_price = item.select_one(".a-price") or item.select_one(".a-color-base")
-            if alt_price:
-                product["price"] = alt_price.text.strip()
-        
-        # Extract image URL
-        image_element = item.select_one("img.s-image")
-        if image_element and "src" in image_element.attrs:
-            product["image"] = image_element["src"]
-        
         # Extract product URL
-        url_element = item.select_one("h2 a")
+        url_element = item.select_one("a.a-link-normal.s-line-clamp-2") # Finds the first <a> tag that has both classes: a-link-normal and s-line-clamp-2.
         if url_element and "href" in url_element.attrs:
-            product["url"] = "https://www.amazon.com" + url_element["href"]
+            product_url = "https://www.amazon.com" + url_element["href"]
+            return product_url
             
-            # Extract ASIN from URL if possible
-            try:
-                import re
-                asin_match = re.search(r'/dp/([A-Z0-9]{10})/', url_element["href"])
-                if asin_match:
-                    product["asin"] = asin_match.group(1)
-            except:
-                pass
+        return None
+    except Exception as e:
+        print(f"Error extracting URL: {str(e)}")
+
+def extract_product_info(soup, product_url):
+    try:
+        product = {
+            "url": product_url,
+            "scraped_from": "product_page"
+        }
+
+        # Extract product title
+        title = soup.select_one("span#productTitle")
+        if title:
+            product["title"] = title.text.strip()
         
-        # Extract ratings if available
+        # Extract product price
+        price = soup.select_one("span.a-offscreen")
+        if price:
+            product["price"] = price.text.strip()
+        
+        # Extract product image
+        images = soup.select("div.imgTagWrapper img")
+        image = None
+
+        for img in images:
+            if img.has_attr("atr") and "Lenovo Tab P12-2024" in img["alt"]:
+                image = img
+                break
+
+        if image:
+            if image.has_attr("data-a-dynamic-image"):
+                try:
+                    import json
+                    dynamic_imgs = json.loads(image["data-a-dynamic-image"])
+                    if dynamic_imgs and isinstance(dynamic_imgs, dict) and len(dynamic_imgs) > 0:
+                        # Sort the image URLs by size to get the highest resolution
+                        sorted_urls = sorted(dynamic_imgs.keys(), 
+                                            key=lambda x: sum(int(dim) for dim in str(dynamic_imgs[x]).replace('[', '').replace(']', '').split(',')),
+                                            reverse=True)
+                        
+                        product["image"] = sorted_urls[0]
+                        product["image_alt"] = image.get('alt', '')  # Preserve the detailed alt text
+                        # Also extract all available image sizes
+                        product["available_image_sizes"] = {url: dynamic_imgs[url] for url in dynamic_imgs}
+                except Exception as e:
+                    # Fallback to src if JSON parsing fails
+                    product["image"] = image.get('src', '')
+                    product["image_alt"] = image.get('alt', '')
+            else:
+                # Use src attribute directly if no data-a-dynamic-image
+                product["image"] = image.get('src', '')
+                product["image_alt"] = image.get('alt', '')
+                
+        
+        # Fallback to other image selectors if the specific image wasn't found
+        if "image" not in product or not product["image"]:
+            # Fallback extraction code from before...
+            pass
+        
+       
+        
+    #     # Extract ratings if available
         try:
             rating_element = item.select_one("i.a-icon-star-small")
             if rating_element:
@@ -124,10 +155,17 @@ def extract_first_product(soup):
                 product["rating"] = rating_text
         except:
             pass
-            
+
+        
         return product
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": str(e), "error_type": type(e).__name__}
+                        
+
+
+
+
+
 
 @app.get("/")
 def amazon(query: str = Query(...)):
@@ -179,7 +217,7 @@ def amazon(query: str = Query(...)):
                     return result
                 
                 # Extract just the first product
-                product = extract_first_product(soup)
+                product = extract_first_product_url(soup)
                 
                 if product:
                     result["product"] = product
