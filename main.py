@@ -131,64 +131,78 @@ def extract_first_product(soup):
 
 @app.get("/")
 def amazon(query: str = Query(...)):
-    # Simulate human behavior with a small delay
-    time.sleep(random.uniform(3, 6))
+    attempts = 3
 
-    new_session = random.random() < 0.2 # 20% chance to create a new session
-    sess = requests.Session() if new_session else session
-    
-    # Create a more natural looking Amazon search URL
-    url_templates = [
-        f"https://www.amazon.com/s?k={query.replace(' ', '+')}&ref=nb_sb_noss",
-        f"https://www.amazon.com/s?k={query.replace(' ', '+')}&crid={random.randint(10000000, 99999999)}",
-        f"https://www.amazon.com/s?k={query.replace(' ', '+')}&sprefix={query.lower().replace(' ', '+')}"
-    ]
-    
-    url = random.choice(url_templates)
-    
-    # Get fresh headers
-    headers = get_headers()
-    
-    try:
-        # Make the request with our session
-        response = sess.get(url, headers=headers, timeout=15)
+    for attempt in range(attempts):
+        # Simulate human behavior with a small delay
+        time.sleep(random.uniform(3, 6 + attempt * 2))  # Increase delay with each attempt
+
+        attempt_info = f"Attempt {attempt + 1} of {attempts}"
+
+        new_session = random.random() < 0.2 # 20% chance to create a new session
+        sess = requests.Session() if new_session else session
         
-        # Create the result object
-        result = {
-            "status_code": response.status_code,
-            "url": response.url
-        }
+        # Create a more natural looking Amazon search URL
+        url_templates = [
+            f"https://www.amazon.com/s?k={query.replace(' ', '+')}&ref=nb_sb_noss",
+            f"https://www.amazon.com/s?k={query.replace(' ', '+')}&crid={random.randint(10000000, 99999999)}",
+            f"https://www.amazon.com/s?k={query.replace(' ', '+')}&sprefix={query.lower().replace(' ', '+')}"
+        ]
         
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Parse the HTML
-            soup = BeautifulSoup(response.text, "html.parser")
+        url = random.choice(url_templates)
+        
+        # Get fresh headers
+        headers = get_headers()
+    
+        try:
+            # Make the request with our session
+            response = sess.get(url, headers=headers, timeout=15)
             
-            # Check for blocking or captcha
-            if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]):
-                result["error"] = "Anti-bot protection detected"
+            # Create the result object
+            result = {
+                "status_code": response.status_code,
+                "url": response.url
+            }
+            
+            # Check if the request was successful
+            if response.status_code == 200:
+                # Parse the HTML
+                soup = BeautifulSoup(response.text, "html.parser")
+                
+                # Check for blocking or captcha
+                if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]):
+                    if attempt < attempts - 1:
+                        continue
+                    
+                    result["error"] = "Anti-bot protection detected"
+                    result["content_sample"] = response.text[:500]  # First 500 chars for debugging
+                    return result
+                
+                # Extract just the first product
+                product = extract_first_product(soup)
+                
+                if product:
+                    result["product"] = product
+                    return result
+                else:
+                    if attempt < attempts - 1:
+                        continue
+                    result["message"] = "No products found"
+                    
+            else:
+                result["message"] = f"Failed to get data: HTTP {response.status_code}"
                 result["content_sample"] = response.text[:500]  # First 500 chars for debugging
                 return result
             
-            # Extract just the first product
-            product = extract_first_product(soup)
-            
-            if product:
-                result["product"] = product
-            else:
-                result["message"] = "No products found"
-                
-        else:
-            result["message"] = f"Failed to get data: HTTP {response.status_code}"
-            result["content_sample"] = response.text[:500]  # First 500 chars for debugging
-            
-        return result
+        except Exception as e:
+            return {
+                "error": str(e),
+                "error_type": type(e).__name__
+            }
         
-    except Exception as e:
-        return {
-            "error": str(e),
-            "error_type": type(e).__name__
-        }
+    return {
+        "error": f"All {attempts} attempts failed",
+    }
 
 @functions_framework.http
 def amazon_function(request):
