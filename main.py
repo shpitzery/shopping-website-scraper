@@ -69,11 +69,38 @@ def get_headers():
     
     return headers
 
-def extract_first_product_url(soup):
+
+def get_soup(sess, url, attempt, attempts=3):
+    headers = get_headers()
+    
+    try:
+        # Make the request with our session
+        response = sess.get(url, headers=headers, timeout=15)
+        
+        
+        # Check if the request was successful
+        if response.status_code != 200 and attempt >= attempts - 1:
+            return f"error: Failed to get data: HTTP {response.status_code}", f"attempt: {attempt + 1}", False
+        
+        # Parse the HTML
+        soup = BeautifulSoup(response.text, "html.parser")
+            
+        # Check for blocking or captcha
+        if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]) and attempt >= attempts - 1:
+            return f"error: Anti-bot protection detected on product page", f"attempt: {attempt + 1}", False
+
+        return response.status_code, soup, True
+    
+    except requests.exceptions.RequestException as e:
+        return f"error: Request failed: {str(e)}", f"attempt: {attempt + 1}", False
+        
+
+def extract_first_product_url(soup, company_name: str, search_results: dict, url_selector: str):
     try:
 
         # Find all search result items
-        items = soup.find_all("div", {"data-component-type": "s-search-result"})
+        # items = soup.find_all("div", {"data-component-type": "s-search-result"})
+        items = soup.find_all("div", search_results)
         
         if not items or len(items) == 0:
             return None
@@ -82,21 +109,18 @@ def extract_first_product_url(soup):
         item = items[0]
         
         # Extract product URL
-        url_element = item.select_one("a.a-link-normal.s-line-clamp-2") # Finds the first <a> tag that has both classes: a-link-normal and s-line-clamp-2.
+        url_element = item.select_one(url_selector)
         if url_element and "href" in url_element.attrs:
-            product_url = "https://www.amazon.com" + url_element["href"]
+            product_url = f"https://www.{company_name.lower()}.com" + url_element["href"]
             return product_url
             
         return None
     except Exception as e:
         print(f"Error extracting URL: {str(e)}")
 
-def extract_product_info(soup, product_url):
+
+def extract_product_info(soup, product):
     try:
-        product = {
-            "url": product_url,
-            "scraped_from": "product_page"
-        }
 
         # Extract product title
         title = soup.select_one("span#productTitle")
@@ -195,12 +219,12 @@ def extract_product_info(soup, product_url):
                             break
                             
             # Extract review count
-            reviews_count = soup.select_one("#acrCustomerReviewText")
-            if reviews_count:
-                count_text = reviews_count.text.strip()
+            reviews = soup.select_one("#acrCustomerReviewText")
+            if reviews:
+                count_text = reviews.text.strip()
                 count_match = re.search(r"([\d,]+)", count_text)
                 if count_match:
-                    product["review_count"] = count_match.group(1)
+                    product["reviews"] = count_match.group(1)
         except Exception as e:
             product["rating_extraction_error"] = str(e)
  
@@ -208,7 +232,7 @@ def extract_product_info(soup, product_url):
         # Extract ASIN, whch is a unique identifier for Amazon products - 10 characters long
         try:
             import re
-            asin_match = re.search(r'/dp/([A-Z0-9]{10})/', product_url)
+            asin_match = re.search(r'/dp/([A-Z0-9]{10})/', product["product_page_url"])
             if asin_match:
                 product["asin"] = asin_match.group(1)
 
@@ -224,7 +248,7 @@ def extract_product_info(soup, product_url):
 
 
 @app.get("/")
-def amazon(query: str = Query(...)):
+def website(site_name, search_results, url_selector, query: str = Query(...)):
     attempts = 3
 
     for attempt in range(attempts):
@@ -236,53 +260,33 @@ def amazon(query: str = Query(...)):
         
         # Create a more natural looking Amazon search URL
         url_templates = [
-            f"https://www.amazon.com/s?k={query.replace(' ', '+')}&ref=nb_sb_noss",
-            f"https://www.amazon.com/s?k={query.replace(' ', '+')}&crid={random.randint(10000000, 99999999)}",
-            f"https://www.amazon.com/s?k={query.replace(' ', '+')}&sprefix={query.lower().replace(' ', '+')}"
+            f"https://www.{site_name}.com/s?k={query.replace(' ', '+')}&ref=nb_sb_noss",
+            f"https://www.{site_name}.com/s?k={query.replace(' ', '+')}&crid={random.randint(10000000, 99999999)}",
+            f"https://www.{site_name}.com/s?k={query.replace(' ', '+')}&sprefix={query.lower().replace(' ', '+')}"
         ]
         
         # why in the code, you changed this: url = random.choice(url_templates) to this: url = url_templates[attempt % len(url_templates)]
-        url = url_templates[attempt % len(url_templates)]
-        
-        # Get fresh headers
-        headers = get_headers()
+        website_url = url_templates[attempt % len(url_templates)]
     
         try:
-            # Make the request with our session
-            response = sess.get(url, headers=headers, timeout=15)
+            ret1, ret2, flag = get_soup(sess, website_url, attempt)
+
+            if not flag:
+                return {
+                    ret1, ret2
+                }
+            
+            statusCode = ret1
+            soup = ret2
             
             # Create the result object
-            result = {
-                "status_code": response.status_code,
-                "url": response.url,
+            product = {
+                "into_website_status_code": statusCode,
                 "attempt": attempt + 1
             }
-            
-            # Check if the request was successful
-            if response.status_code != 200:
-                if attempt < attempts - 1:
-                    continue
-                return {
-                    "error": f"Failed to get data: HTTP {response.status_code}",
-                    "attempt": attempt + 1,
-                }
-                # Parse the HTML
-            soup = BeautifulSoup(response.text, "html.parser")
-                
-                # Check for blocking or captcha
-            if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]):
-                if attempt < attempts - 1:
-                    continue
-                return {
-                    "error": "Anti-bot protection detected on product page",
-                    "content_sample": product_response.text[:500],  # First 500 chars for debugging
-                    "attempt": attempt + 1,
-                }
-            
-# """"------------------------------- split here -------------------------------""""
 
             # Extract just the first product
-            product_url = extract_first_product_url(soup)
+            product_url = extract_first_product_url(soup, site_name, search_results, url_selector)
             
             if not product_url:
                 if attempt < attempts - 1:
@@ -294,39 +298,28 @@ def amazon(query: str = Query(...)):
             
             # Get the product details page
             time.sleep(random.uniform(2,5)) # Delay before fetching product details
-            headers = get_headers() # Get fresh headers
 
-            product_response = sess.get(product_url, headers=headers, timeout=15)
+            ret1, ret2, flag = get_soup(sess, product_url, attempt)
 
-            if product_response.status_code != 200:
-                if attempt < attempts - 1:
-                    continue
-
+            if not flag:
                 return {
-                    "error": f"Failed to get product data: HTTP {product_response.status_code}",
-                    "attempt": attempt + 1,
-                }
-
-            result["product_status"] = product_response.status_code
-            result["product_url"] = product_url
-
-            soup2 = BeautifulSoup(product_response.text, "html.parser")
-                    
-            if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]):
-                if attempt < attempts - 1:
-                    continue
-
-                return {
-                    "error": "Anti-bot protection detected on product page",
-                    "content_sample": product_response.text[:500],  # First 500 chars for debugging
-                    "attempt": attempt + 1,
+                    ret1, ret2
                 }
             
-            product_info = extract_product_info(soup2, product_url)
+            statusCode = ret1
+            soup = ret2
+            
+            product["into_product_page_status_code"] = statusCode
+            product["product_page_url"] = product_url
+
+            product_info = extract_product_info(soup, product)
+
+            neccessary_info = {"product_page_url", "title", "price", "rating", "reviews", "image"}
 
             if product_info:
-                result["product"] = product_info
-                return result # Success!
+                product.update(product_info)
+                missing_info = neccessary_info - product.keys()
+                return missing_info if missing_info else product
             
             if attempt < attempts - 1:
                 continue
@@ -358,7 +351,12 @@ def amazon_function(request):
     if not query:
         return json_response({"error": "Query parameter is required"}, 400)
     
-    result = amazon(query)
+    Amazon = {
+        "company_name": "Amazon",
+        "search_results": {"data-component-type": "s-search-result"},
+        "url_selector": "a.a-link-normal.s-line-clamp-2"
+    }
+    result = website(Amazon["company_name"], Amazon["search_results"], Amazon["url_selector"], query)
     return json_response(result)
 
 def json_response(data, status_code=200):
