@@ -1,5 +1,5 @@
 fastapi==0.115.12
 uvicorn==0.34.2
-requests==2.32.3
+selenium==4.21.0
 beautifulsoup4==4.13.4
 functions-framework==3.4.0

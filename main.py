@@ -1,387 +1,631 @@
-from fastapi import FastAPI, Query
-from fastapi.middleware.cors import CORSMiddleware
+# from fastapi import FastAPI, Query
+# from fastapi.middleware.cors import CORSMiddleware
+# from bs4 import BeautifulSoup
+# import requests
+# import json
+# import random
+# import time
+# import re
+
+# app = FastAPI()
+# app.add_middleware(
+#     CORSMiddleware,
+#     allow_origins=["*"],
+#     allow_credentials=True,
+#     allow_methods=["*"],
+#     allow_headers=["*"],
+# )
+
+# # Store session cookies between requests
+# session = requests.Session()
+
+# # Device profiles for anti-detection
+# device_profiles = [
+#     {
+#         "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+#         "sec_ch_ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+#         "sec_ch_ua_mobile": "?0",
+#         "sec_ch_ua_platform": '"Windows"'
+#     },
+#     {
+#         "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+#         "sec_ch_ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+#         "sec_ch_ua_mobile": "?0",
+#         "sec_ch_ua_platform": '"macOS"'
+#     },
+#     {
+#         "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+#         "sec_ch_ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+#         "sec_ch_ua_mobile": "?0",
+#         "sec_ch_ua_platform": '"Linux"'
+#     }
+# ]
+
+# # Site configurations for the 4 target sites
+# SITES_CONFIG = {
+#     "amazon": {
+#         "name": "Amazon",
+#         "search_url": "https://www.amazon.com/s?k={query}&ref=nb_sb_noss",
+#         "search_result_selector": "div[data-component-type='s-search-result']",
+#         "selectors": {
+#             "title": "h2.a-size-medium span",
+#             "price": ".a-price .a-offscreen, .a-price-whole",
+#             "rating": ".a-size-small .a-color-base, .a-icon-alt",
+#             "reviews": "span.a-size-small.s-underline-text, .s-underline-text, a[href*='customerReviews']",
+#             "image": ".s-image",
+#             "url": "h2.a-size-mini a, .a-link-normal"
+#         }
+#     },
+
+#     "bestbuy": {
+#     "name": "Best Buy",
+#     "search_url": "https://www.bestbuy.com/site/searchpage.jsp?st={query}&intl=nosplash",
+#     "search_result_selector": "li.product-list-item",  # Fixed: was missing 'li.'
+#     "selectors": {
+#         "title": ".product-list-item-title",  # This should work
+#         "price": ".visually-hidden",  # Need to parse this with regex
+#         "rating": ".visually-hidden", # Same element, different regex
+#         "reviews": ".visually-hidden", # Same element, different regex  
+#         "image": ".product-image img",
+#         "url": "a[href*='/site/']"
+#         }
+#     },
+#     # "target": {
+#     #     "name": "Target",
+#     #     "search_url": "https://www.target.com/s?searchTerm={query}",
+#     #     "search_result_selector": "div[data-test='@web/site/product_card/ProductCard']",
+#     #     "selectors": {
+#     #         "title": "a[data-test='product-title']",
+#     #         "price": "span[data-test='product-price']",
+#     #         "rating": "div[data-test='ratings-and-reviews'] span",
+#     #         "reviews": "a[data-test='rating-count']",
+#     #         "image": "img[data-test='productImage-primary']",
+#     #         "url": "a[data-test='product-title']"
+#     #     }
+#     # },
+#     # "newegg": {
+#     #     "name": "Newegg",
+#     #     "search_url": "https://www.newegg.com/p/pl?d={query}",
+#     #     "search_result_selector": "div.item-container",
+#     #     "selectors": {
+#     #         "title": ".item-title",
+#     #         "price": ".price-current strong, .price-current-num",
+#     #         "rating": ".item-rating i",
+#     #         "reviews": ".item-rating-num",
+#     #         "image": ".item-img img",
+#     #         "url": ".item-title"
+#     #     }
+#     # }
+# }
+
+# def get_headers():
+#     """Generate realistic browser headers"""
+#     profile = random.choice(device_profiles)
+    
+#     headers = {
+#         "User-Agent": profile["user_agent"],
+#         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+#         "Accept-Language": "en-US,en;q=0.9",
+#         "Accept-Encoding": "gzip, deflate, br, zstd",
+#         "DNT": "1",
+#         "Connection": "keep-alive",
+#         "Upgrade-Insecure-Requests": "1",
+#         "Sec-Fetch-Dest": "document",
+#         "Sec-Fetch-Mode": "navigate",
+#         "Sec-Fetch-Site": "none",
+#         "Sec-Fetch-User": "?1",
+#         "Cache-Control": "max-age=0"
+#     }
+
+#         # Add Chrome-specific headers
+#     if "Chrome" in profile["user_agent"]:
+#         headers.update({
+#             "sec-ch-ua": profile["sec_ch_ua"],
+#             "sec-ch-ua-mobile": profile["sec_ch_ua_mobile"],
+#             "sec-ch-ua-platform": profile["sec_ch_ua_platform"]
+#         })
+    
+#     referrers = [
+#         "https://www.google.com/",
+#         "https://www.bing.com/",
+#         "https://www.google.com/search?q=shopping"
+#     ]
+#     headers["Referer"] = random.choice(referrers)
+    
+#     return headers
+
+# def clean_text(text):
+#     """Clean extracted text"""
+#     if not text:
+#         return ""
+#     return re.sub(r'\s+', ' ', text.strip())
+
+# def extract_price(price_text):
+#     """Extract clean price from text"""
+#     if not price_text:
+#         return None
+    
+#     # Look for price patterns
+#     price_match = re.search(r'[\$]?([\d,]+\.?\d{0,2})', price_text.replace(',', ''))
+#     if price_match:
+#         return f"${price_match.group(1)}"
+#     return price_text.strip()
+
+# def extract_rating(rating_text):
+#     """Extract rating number from text"""
+#     if not rating_text:
+#         return None
+    
+#     rating_match = re.search(r'([\d\.]+)', rating_text)
+#     if rating_match:
+#         return rating_match.group(1)
+#     return None
+
+# def extract_bestbuy_data(first_result):
+#     """Enhanced Best Buy data extraction"""
+#     print(first_result.prettify())
+#     product = {
+#         "site": "Best Buy",
+#         "site_key": "bestbuy", 
+#         "success": True
+#     }
+    
+#     # Extract title - it's in the product-list-item-title
+#     title_elem = first_result.select_one(".product-list-item-title")
+#     if title_elem:
+#         product["title"] = clean_text(title_elem.get_text())
+    
+#     # Extract price - Best Buy has complex pricing structure
+#     price_selectors = [
+#         ".customer-price.medium",
+#         ".medium-customer-price", 
+#         "[data-testid*='price']",
+#         ".visually-hidden:contains('current price')",
+#         ".sr-only:contains('current price')"
+#     ]
+    
+#     for selector in price_selectors:
+#         try:
+#             if ":contains(" in selector:
+#                 # Handle contains selector manually
+#                 elements = first_result.select(".visually-hidden, .sr-only")
+#                 for elem in elements:
+#                     text = elem.get_text().lower()
+#                     if "current price" in text:
+#                         # Extract price from the text
+#                         price_match = re.search(r'\$[\d,]+\.?\d{0,2}', elem.get_text())
+#                         if price_match:
+#                             product["price"] = price_match.group()
+#                             break
+#             else:
+#                 price_elem = first_result.select_one(selector)
+#                 if price_elem:
+#                     product["price"] = extract_price(price_elem.get_text())
+#                     break
+#         except Exception as e:
+#             continue
+    
+#     # Extract rating - Best Buy uses visually-hidden elements
+#     rating_elements = first_result.select(".visually-hidden")
+#     for elem in rating_elements:
+#         text = elem.get_text()
+#         if "Rating" in text and "out of 5" in text:
+#             rating_match = re.search(r'Rating ([\d\.]+) out of 5', text)
+#             if rating_match:
+#                 product["rating"] = rating_match.group(1)
+#                 break
+    
+#     # Extract review count
+#     for elem in rating_elements:
+#         text = elem.get_text()
+#         if "reviews" in text.lower():
+#             review_match = re.search(r'(\d+(?:,\d{3})*)', text)
+#             if review_match:
+#                 product["reviews"] = review_match.group(1)
+#                 break
+    
+#     # Extract image
+#     img_elem = first_result.select_one(".product-image img")
+#     if img_elem:
+#         img_src = img_elem.get("src") or img_elem.get("data-src")
+#         if img_src and not img_src.startswith("data:"):
+#             product["image"] = img_src
+    
+#     # Extract product URL
+#     url_elem = first_result.select_one("a[href*='/site/']")
+#     if url_elem and url_elem.get("href"):
+#         href = url_elem["href"]
+#         if href.startswith("http"):
+#             product["product_url"] = href
+#         else:
+#             product["product_url"] = "https://www.bestbuy.com" + href
+    
+#     return product
+
+# def find_element_with_multiple_selectors(soup_element, selector_string):
+#     """
+#     Try multiple selectors separated by comma until one works
+    
+#     Args:
+#         soup_element: BeautifulSoup element to search within
+#         selector_string: String with multiple selectors separated by commas
+    
+#     Returns:
+#         First matching element or None
+#     """
+#     selectors = [s.strip() for s in selector_string.split(", ")]
+#     for selector in selectors:
+#         try:
+#             element = soup_element.select_one(selector)
+#             if element and element.get_text().strip():  # Make sure it has text
+#                 return element
+#         except Exception as e:
+#             continue
+#     return None
+
+# # Updated scrape_site function to handle Best Buy specifically:
+# def scrape_site(site_key, query):
+#     """
+#     Enhanced site scraping with Best Buy specific handling
+#     """
+#     config = SITES_CONFIG[site_key]
+    
+#     try:
+#         # Build search URL
+#         search_url = config["search_url"].format(query=query.replace(' ', '+'))
+#         print(f"Searching {config['name']}: {search_url}")
+        
+#         # Make request
+#         headers = get_headers()
+#         response = requests.get(search_url, headers=headers, timeout=15)
+        
+#         if response.status_code != 200:
+#             return {
+#                 "site": config["name"],
+#                 "error": f"HTTP {response.status_code}",
+#                 "success": False
+#             }
+        
+#         # Parse HTML
+#         soup = BeautifulSoup(response.text, 'html.parser')
+        
+#         # Check for anti-bot detection
+#         if any(keyword in soup.text.lower() for keyword in ["captcha", "robot check", "unusual traffic"]):
+#             return {
+#                 "site": config["name"],
+#                 "error": "Anti-bot detection triggered",
+#                 "success": False
+#             }
+        
+#         # Find first search result
+#         first_result = soup.select_one(config["search_result_selector"])
+#         if not first_result:
+#             # Debug: Let's see what we can find
+#             debug_containers = soup.select("li[class*='product'], div[class*='product'], [data-testid*='product']")
+#             print(f"Debug {config['name']}: Found {len(debug_containers)} potential containers")
+            
+#             if debug_containers:
+#                 first_result = debug_containers[0]
+#                 print(f"Using fallback container: {first_result.get('class', [])}")
+#             else:
+#                 return {
+#                     "site": config["name"],
+#                     "error": "No search results found",
+#                     "success": False,
+#                     "debug": f"Page title: {soup.title.string if soup.title else 'No title'}"
+#                 }
+        
+#         # Use Best Buy specific extraction if it's Best Buy
+#         if site_key == "bestbuy":
+#             return extract_bestbuy_data(first_result)
+        
+#         # For other sites, use the existing generic extraction logic
+#         product = {
+#             "site": config["name"],
+#             "site_key": site_key,
+#             "success": True
+#         }
+        
+#         selectors = config["selectors"]
+        
+#         # Extract title
+#         title_elem = find_element_with_multiple_selectors(first_result, selectors["title"])
+#         if title_elem:
+#             product["title"] = clean_text(title_elem.get_text())
+        
+#         # Extract price
+#         price_elem = find_element_with_multiple_selectors(first_result, selectors["price"])
+#         if price_elem:
+#             product["price"] = extract_price(price_elem.get_text())
+        
+#         # Extract rating
+#         rating_elem = find_element_with_multiple_selectors(first_result, selectors["rating"])
+#         if rating_elem:
+#             rating_text = rating_elem.get_text() or rating_elem.get("title", "")
+#             product["rating"] = extract_rating(rating_text)
+        
+#         # Extract review count
+#         reviews_elem = find_element_with_multiple_selectors(first_result, selectors["reviews"])
+#         if reviews_elem:
+#             reviews_text = reviews_elem.get_text()
+#             review_match = re.search(r'\((\d+(?:,\d{3})*)\)|(\d+(?:,\d{3})*)', reviews_text)
+#             if review_match:
+#                 product["reviews"] = review_match.group(1) or review_match.group(2)
+        
+#         # Extract image
+#         img_elem = find_element_with_multiple_selectors(first_result, selectors["image"])
+#         if img_elem:
+#             img_src = img_elem.get("src") or img_elem.get("data-src")
+#             if img_src and not img_src.startswith("data:"):
+#                 product["image"] = img_src
+        
+#         # Extract product URL
+#         url_elem = find_element_with_multiple_selectors(first_result, selectors["url"])
+#         if url_elem and url_elem.get("href"):
+#             href = url_elem["href"]
+#             if href.startswith("http"):
+#                 product["product_url"] = href
+#             else:
+#                 base_url = f"https://www.{site_key}.com"
+#                 product["product_url"] = base_url + href
+ 
+        
+#         print(f"✅ {config['name']}: Found {product.get('title', 'Product')[:50]}...")
+#         return product
+        
+#     except requests.exceptions.RequestException as e:
+#         return {
+#             "site": config["name"],
+#             "error": f"Request failed: {str(e)}",
+#             "success": False
+#         }
+#     except Exception as e:
+#         return {
+#             "site": config["name"],
+#             "error": f"Parsing failed: {str(e)}",
+#             "success": False
+#         }
+
+# def compare_product(query):
+#     """
+#     Compare product across all 4 sites
+    
+#     Args:
+#         query: Product name/model to search for
+    
+#     Returns:
+#         Dictionary with results from all sites plus comparison
+#     """
+#     print(f"\n🔍 Searching for: {query}")
+#     print("=" * 50)
+    
+#     results = {
+#         "query": query,
+#         "timestamp": time.time(),
+#         "sites": {},
+#         "comparison": {
+#             "lowest_price": None,
+#             "highest_rating": None,
+#             "most_reviews": None
+#         }
+#     }
+    
+#     # Scrape each site
+#     for site_key in SITES_CONFIG.keys():
+#         try:
+#             site_result = scrape_site(site_key, query)
+#             results["sites"][site_key] = site_result
+            
+#             if not site_result.get("success"):
+#                 print(f"❌ {site_result['site']}: {site_result.get('error', 'Unknown error')}")
+            
+#             # Add delay between sites to be respectful
+#             time.sleep(random.uniform(2, 4))
+            
+#         except Exception as e:
+#             results["sites"][site_key] = {
+#                 "site": SITES_CONFIG[site_key]["name"],
+#                 "error": str(e),
+#                 "success": False
+#             }
+#             print(f"❌ {SITES_CONFIG[site_key]['name']}: {str(e)}")
+    
+#     # Analyze results for comparison
+#     successful_results = [r for r in results["sites"].values() if r.get("success")]
+#     print(f"\n📊 Successfully scraped {len(successful_results)}/4 sites")
+    
+#     if successful_results:
+#         # Find lowest price
+#         prices = []
+#         for result in successful_results:
+#             if "price" in result:
+#                 price_match = re.search(r'([\d,]+\.?\d{0,2})', result["price"].replace('$', '').replace(',', ''))
+#                 if price_match:
+#                     price_val = float(price_match.group(1))
+#                     prices.append({"site": result["site"], "price": price_val, "display": result["price"]})
+        
+#         if prices:
+#             lowest = min(prices, key=lambda x: x["price"])
+#             results["comparison"]["lowest_price"] = {
+#                 "site": lowest["site"],
+#                 "price": lowest["display"]
+#             }
+#             print(f"💰 Lowest price: {lowest['display']} at {lowest['site']}")
+        
+#         # Find highest rating
+#         ratings = []
+#         for result in successful_results:
+#             if "rating" in result:
+#                 try:
+#                     rating_val = float(result["rating"])
+#                     ratings.append({"site": result["site"], "rating": rating_val})
+#                 except ValueError:
+#                     pass
+        
+#         if ratings:
+#             highest = max(ratings, key=lambda x: x["rating"])
+#             results["comparison"]["highest_rating"] = {
+#                 "site": highest["site"],
+#                 "rating": highest["rating"]
+#             }
+#             print(f"⭐ Highest rating: {highest['rating']} at {highest['site']}")
+        
+#         # Find most reviews
+#         review_counts = []
+#         for result in successful_results:
+#             if "reviews" in result:
+#                 try:
+#                     review_val = int(result["reviews"].replace(',', ''))
+#                     review_counts.append({"site": result["site"], "count": review_val})
+#                 except ValueError:
+#                     pass
+        
+#         if review_counts:
+#             most_reviews = max(review_counts, key=lambda x: x["count"])
+#             results["comparison"]["most_reviews"] = {
+#                 "site": most_reviews["site"],
+#                 "count": f"{most_reviews['count']:,}"
+#             }
+#             print(f"📝 Most reviews: {most_reviews['count']:,} at {most_reviews['site']}")
+    
+#     print("=" * 50)
+#     return results
+
+# @app.get("/")
+# def root():
+#     """Root endpoint with API info"""
+#     return {
+#         "app": "Product Price Comparison API",
+#         "version": "1.0",
+#         "supported_sites": list(SITES_CONFIG.keys()),
+#         "usage": "GET /compare?product=YOUR_PRODUCT_NAME"
+#     }
+
+# @app.get("/compare")
+# def compare_product_endpoint(product: str = Query(..., description="Product name or model to search for")):
+#     """
+#     Compare a product across Amazon, Best Buy, Target, and Newegg
+    
+#     Example: /compare?product=Lenovo Tab P12-2024
+#     """
+#     if not product or len(product.strip()) < 3:
+#         return {
+#             "error": "Product name must be at least 3 characters long",
+#             "example": "Lenovo Tab P12-2024"
+#         }
+    
+#     return compare_product(product.strip())
+
+# @app.get("/health")
+# def health_check():
+#     """Health check endpoint"""
+#     return {"status": "healthy", "timestamp": time.time()}
+
+# if __name__ == "__main__":
+#     import uvicorn
+#     print("🚀 Starting Product Comparison API...")
+#     print("📍 Visit: http://localhost:8000/compare?product=Lenovo Tab P12-2024")
+#     print("📍 API Docs: http://localhost:8000/docs")
+#     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
-from product_info import extract_product_info
-import requests
-import functions_framework
-import json
-import random
 import time
 import re
+import os
 
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+def clean_text(text):
+    if not text:
+        return ""
+    return re.sub(r'\s+', ' ', text.strip())
 
-# Store session cookies between requests
-session = requests.Session()
+def fetch_html_with_scroll(url: str, scroll_pause_time: float = 1.5, max_scrolls: int = 10) -> str:
+    print(f"[INFO] Launching browser for: {url}")
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    driver = webdriver.Chrome(options=chrome_options)
 
-# Device and browser combinations for realistic fingerprinting
-device_profiles = [
-    {
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
-        "viewport": "1920x1080",
-        "platform": "Windows",
-        "browser": "Chrome"
-    },
-    {
-        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.3 Safari/605.1.15",
-        "viewport": "1680x1050",
-        "platform": "MacOS",
-        "browser": "Safari"
-    },
-    {
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0",
-        "viewport": "1366x768",
-        "platform": "Windows",
-        "browser": "Firefox"
-    }
-]
-
-def get_headers():
-    # Choose a random device profile
-    profile = random.choice(device_profiles)
-    
-    # Basic headers all browsers use
-    headers = {
-        "User-Agent": profile["user_agent"],
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "DNT": "1",
-        "Connection": "keep-alive",
-        "Upgrade-Insecure-Requests": "1",
-        "Cache-Control": "max-age=0"
-    }
-    
-    # referer from popular sites
-    referrers = [
-        "https://www.google.com/",
-        "https://www.bing.com/",
-        "https://duckduckgo.com/",
-        "https://www.google.com/search?q=amazon"
-    ]
-    headers["Referer"] = random.choice(referrers)
-    
-    return headers
-
-
-def get_soup(sess, url, attempt, attempts=3):
-    headers = get_headers()
-    
     try:
-        # Make the request with our session
-        response = sess.get(url, headers=headers, timeout=15)
-        
-        
-        # Check if the request was successful
-        if response.status_code != 200 and attempt >= attempts - 1:
-            return f"error: Failed to get data: HTTP {response.status_code}", f"attempt: {attempt + 1}", False
-        
-        # Parse the HTML
-        soup = BeautifulSoup(response.text, "html.parser")
-            
-        # Check for blocking or captcha
-        if any(text in soup.text.lower() for text in ["captcha", "robot check", "unusual traffic"]) and attempt >= attempts - 1:
-            return f"error: Anti-bot protection detected on product page", f"attempt: {attempt + 1}", False
+        driver.get(url)
+        print("[INFO] Page loaded. Starting to scroll...")
 
-        return response.status_code, soup, True
-    
-    except requests.exceptions.RequestException as e:
-        return f"error: Request failed: {str(e)}", f"attempt: {attempt + 1}", False
-        
+        last_height = driver.execute_script("return document.body.scrollHeight")
 
-def extract_first_product_url(soup, selectors):
+        for i in range(max_scrolls):
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            print(f"[INFO] Scrolled to bottom (#{i + 1})")
+            time.sleep(scroll_pause_time)
+
+            new_height = driver.execute_script("return document.body.scrollHeight")
+            if new_height == last_height:
+                print("[INFO] Reached end of page (no more content to load).")
+                break
+            last_height = new_height
+
+        html = driver.page_source
+        print("[INFO] Finished scrolling and captured HTML.")
+
+    finally:
+        driver.quit()
+        print("[INFO] Browser closed.")
+
+    return html
+
+def write_html_to_file(html: str):
+    soup = BeautifulSoup(html, "html.parser")
+    product_items = soup.select(".product-list-item")
+    with open("debug_products_only.html", "w", encoding="utf-8") as f:
+        for item in product_items:
+            f.write(item.prettify())
+            f.write("\n\n<!-- ====== NEXT ITEM ====== -->\n\n")
+        f.flush()
+        os.fsync(f.fileno())
+
+def extract_data_from_html():
     try:
 
-        # Find all search result items
-        # items = soup.find_all("div", {"data-component-type": "s-search-result"})
-        items = soup.find_all("div", selectors["search_results"])
-        
-        if not items or len(items) == 0:
-            return None
-        
-        # Get the first item
-        item = items[0]
-        
-        # Extract product URL
-        url_element = item.select_one(selectors["url_selector"])
-        if url_element and "href" in url_element.attrs:
-            product_url = f"https://www.{selectors['site_name'].lower()}.com" + url_element["href"]
-            return product_url
-            
-        return None
+        with open("debug_products_only.html", "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # Parse it with BeautifulSoup
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Try different experiments here
+        print("[DEBUG] Trying to find all product titles:\n")
+
+        title_tags = soup.select("h2.product-title")
+        if title_tags:
+            title = title_tags[0].text
+            title = clean_text(title)
+            print("[DEBUG] Title:", title)
+        else:
+            print("[DEBUG] No titles found.")
+
+        # for tag in soup.select("h2.product-title"):
+            # print(tag.text.strip())
+            # print(soup.find("h2", class_="product-title").text.strip())
+
+        print("\n[DEBUG] Trying to find prices:\n")
+        print(soup.select("div.pricing")[0].text.strip())
+    
     except Exception as e:
-        print(f"Error extracting URL: {str(e)}")
-
-
-# def extract_product_info(soup, product, query: str):
-#     try:
-
-#         # Extract product title
-#         title = soup.select_one("span#productTitle")
-#         if title:
-#             product["title"] = title.text.strip()
-        
-#         # Extract product price
-#         price_selectors = [
-#             "span.a-offscreen",
-#             "span.a-price-whole",
-#             "#priceblock_ourprice",
-#             "#priceblock_dealprice",
-#             ".a-price .a-offscreen",
-#             "#corePrice_feature_div .a-price .a-offscreen"
-#         ]
-        
-#         for selector in price_selectors:
-#             price_element = soup.select_one(selector)
-#             if price_element and price_element.text.strip():
-#                 product["price"] = price_element.text.strip()
-#                 # check selector for debbugging
-#                 product["price_selector"] = selector
-#                 break
-        
-#         # Extract product image
-#         images = soup.select("div.imgTagWrapper img")
-#         image = None
-
-#         for img in images:
-#             if img.has_attr("alt") and f"{query}" in img.get("alt", ""):
-#                 image = img
-#                 break
-
-#         if image:
-#             if image.has_attr("data-a-dynamic-image"):
-#                 try:
-#                     dynamic_imgs = json.loads(image["data-a-dynamic-image"])
-#                     if dynamic_imgs and isinstance(dynamic_imgs, dict) and len(dynamic_imgs) > 0:
-#                         # Sort the image URLs by size to get the highest resolution
-#                         sorted_urls = sorted(dynamic_imgs.keys(), 
-#                                             key=lambda x: sum(int(dim) for dim in str(dynamic_imgs[x]).replace('[', '').replace(']', '').split(',')),
-#                                             reverse=True)
-                        
-#                         product["image"] = sorted_urls[0]
-#                         product["image_alt"] = image.get('alt', '')  # Preserve the detailed alt text
-
-#                 except Exception as e:
-#                     # Fallback to src if JSON parsing fails
-#                     product["image"] = image.get('src', '')
-#                     product["image_alt"] = image.get('alt', '')
-#             else:
-#                 # Use src attribute directly if no data-a-dynamic-image
-#                 product["image"] = image.get('src', '')
-#                 product["image_alt"] = image.get('alt', '')
-                      
-#         else:
-#             # Fallback to any image if we can't find one with "Lenovo" in alt text
-#             any_image = soup.select_one("div.imgTagWrapper img, #landingImage, #imgBlkFront")
-#             if any_image:
-#                 product["image"] = any_image.get('src', '')
-#                 product["image_alt"] = any_image.get('alt', '')
-  
-        
-#         # Extract rating and review count
-#         try:
-#             import re
-#             # Method 1: Try the reviewCountTextLinkedHistogram which often contains the rating
-#             rating_span = soup.select_one("span.reviewCountTextLinkedHistogram")
-#             if rating_span and "title" in rating_span.attrs:
-#                 rating_text = rating_span["title"]
-#                 rating_match = re.search(r"([\d\.]+) out of", rating_text)
-#                 if rating_match:
-#                     product["rating"] = rating_match.group(1)
-#                     product["rating_text"] = rating_text
-            
-#             # Method 2: Try the a-icon-alt which often contains the rating
-#             if "rating" not in product:
-#                 icon_alt = soup.select_one("span.a-icon-alt")
-#                 if icon_alt:
-#                     rating_text = icon_alt.text
-#                     rating_match = re.search(r"([\d\.]+) out of", rating_text)
-#                     if rating_match:
-#                         product["rating"] = rating_match.group(1)
-#                         product["rating_text"] = rating_text
-            
-#             # Method 3: Try other common rating elements
-#             if "rating" not in product:
-#                 rating_elements = soup.select(".a-star-4-5, .a-star-5, .a-star-4")
-#                 for elem in rating_elements:
-#                     class_str = " ".join(elem.get("class", []))
-#                     if "a-star" in class_str:
-#                         rating_match = re.search(r"a-star-(\d)-(\d)", class_str)
-#                         if rating_match:
-#                             whole = rating_match.group(1)
-#                             fraction = rating_match.group(2)
-#                             product["rating"] = f"{whole}.{fraction}"
-#                             break
-                            
-#             # Extract review count
-#             reviews = soup.select_one("#acrCustomerReviewText")
-#             if reviews:
-#                 count_text = reviews.text.strip()
-#                 count_match = re.search(r"([\d,]+)", count_text)
-#                 if count_match:
-#                     product["reviews"] = count_match.group(1)
-#         except Exception as e:
-#             product["rating_extraction_error"] = str(e)
- 
-
-#         # Extract ASIN, whch is a unique identifier for Amazon products - 10 characters long
-#         # try:
-#         #     import re
-#         #     asin_match = re.search(r'/dp/([A-Z0-9]{10})/', product["product_page_url"])
-#         #     if asin_match:
-#         #         product["asin"] = asin_match.group(1)
-
-#         # except Exception as e:
-#         #     product["asin_extraction_error"] = str(e)
-        
-#         # # DEBUGGING - save a snippet of the HTML to see structure
-#         # product["html_sample"] = soup.prettify()[:1000]
-
-#         return product
+        print(f"[ERROR] Failed to extract data: {str(e)}")
     
-#     except Exception as e:
-#         return {"error": str(e), "error_type": type(e).__name__}
-
-
-@app.get("/")
-def website(first_product_selectors, product_info_selectors, query: str = Query(...)):
-    attempts = 3
-
-    for attempt in range(attempts):
-        # Simulate human behavior with a small delay
-        time.sleep(random.uniform(3, 6 + attempt * 2))  # Increase delay with each attempt
-
-        new_session = random.random() < 0.2 # 20% chance to create a new session
-        sess = requests.Session() if new_session else session
-        
-        # Create a more natural looking Amazon search URL
-        url_templates = [
-            f"https://www.{first_product_selectors['site_name']}.com/s?k={query.replace(' ', '+')}&ref=nb_sb_noss",
-            f"https://www.{first_product_selectors['site_name']}.com/s?k={query.replace(' ', '+')}&crid={random.randint(10000000, 99999999)}",
-            f"https://www.{first_product_selectors['site_name']}.com/s?k={query.replace(' ', '+')}&sprefix={query.lower().replace(' ', '+')}"
-        ]
-        
-        # why in the code, you changed this: url = random.choice(url_templates) to this: url = url_templates[attempt % len(url_templates)]
-        website_url = url_templates[attempt % len(url_templates)]
+if __name__ == "__main__":
+    url = "https://www.bestbuy.com/site/searchpage.jsp?st=lenovo+tab+p12-2024&intl=nosplash"
+    html = fetch_html_with_scroll(url)
+    # with open("debug_bestbuy.html", "w", encoding="utf-8") as f:
+    #     f.write(html)
+    write_html_to_file(html)
+    extract_data_from_html()
     
-        try:
-            ret1, ret2, flag = get_soup(sess, website_url, attempt)
-
-            if not flag:
-                return {
-                    ret1, 
-                    ret2
-                }
-            
-            statusCode = ret1
-            soup = ret2
-            
-            # Create the result object
-            product = {
-                "into_website_status_code": statusCode,
-                "attempt": attempt + 1
-            }
-
-            # Extract just the first product
-            product_url = extract_first_product_url(soup, first_product_selectors)
-            
-            if not product_url:
-                if attempt < attempts - 1:
-                    continue
-                return {
-                    "error": "No products found",
-                    "attempt": attempt + 1,
-                }
-            
-            # Get the product details page
-            time.sleep(random.uniform(2,5)) # Delay before fetching product details
-
-            ret1, ret2, flag = get_soup(sess, product_url, attempt)
-
-            if not flag:
-                return {
-                    ret1, 
-                    ret2
-                }
-            
-            statusCode = ret1
-            soup = ret2
-            
-            product["into_product_page_status_code"] = statusCode
-            product["product_page_url"] = product_url
-
-            product_info = extract_product_info(soup, product, query, product_info_selectors)
-
-            neccessary_info = {"product_page_url", "title", "price", "rating", "reviews", "image"}
-
-            if product_info:
-                product.update(product_info)
-                missing_info = neccessary_info - product.keys()
-                return {"missing_info": list(missing_info)} if missing_info else product
-            
-            if attempt < attempts - 1:
-                continue
-
-            return {
-                "error": "Failed to extract product information",
-                "attempt": attempt + 1,
-            }
-
-        except Exception as e:
-            if attempt < attempts - 1:
-                continue
-
-            return {
-                "error": str(e),
-                "error_type": type(e).__name__,
-                "attempt": attempt + 1
-            }
-        
-    return {
-        "error": f"All {attempts} attempts failed",
-        "attempts": attempts,
-    }
-
-
-@functions_framework.http
-def amazon_function(request):
-    query = request.args.get('query')
-    if not query:
-        return json_response({"error": "Query parameter is required"}, 400)
-    
-    Amazon = {
-        "extract_first_product_selectors": {
-            "site_name": "Amazon",
-            "search_results": {"data-component-type": "s-search-result"},
-            "url_selector": "a.a-link-normal.s-line-clamp-2",
-        },
-
-        "extract_product_info_selectors": {
-            "title_selector": "span#productTitle",
-
-            "img_attr": "data-a-dynamic-image",
-            "img_else": ["div.imgTagWrapper img", "#landingImage", "#imgBlkFront"],
-
-            "rating_selector_method_1": "span.reviewCountTextLinkedHistogram",
-            "rating_selector_method_2": "span.a-icon-alt",
-            "rating_selector_method_1_2_regex": r"([\d\.]+) out of",
-            "rating_selector_method_3": ".a-star-4-5, .a-star-5, .a-star-4",
-            "rating_selector_method_3_regex": r"a-star-(\d)-(\d)",
-
-            "reviews_selector": "#acrCustomerReviewText",
-            "reviews_regex": r"([\d,]+)",
-        }
-    }
-    result = website(Amazon["extract_first_product_selectors"], Amazon["extract_product_info_selectors"], query)
-    return json_response(result)
-
-def json_response(data, status_code=200):
-    response = json.dumps(data)
-    return (response, status_code, {'Content-Type': 'application/json'})
+    # print("[RESULT] Scraped data:")
+    # for title, price in zip(data["titles"], data["prices"]):
+    #     print(f"  - {title} | {price}")
