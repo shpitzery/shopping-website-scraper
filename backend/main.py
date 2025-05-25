@@ -110,19 +110,21 @@ def fetch_html_with_scroll(website, url: str, scroll_pause_time: float = 1.5, ma
 
     return html
 
-def write_html_to_file(website, html: str, company: str = "debug"):
+def write_html_to_file(website, files_dir, html: str, website_name: str = "debug"):
     soup = BeautifulSoup(html, "html.parser")
     product_item = soup.select_one(website['html_selector'])
-    with open(f"{company}.html", "w", encoding="utf-8") as f:
+    
+    target_dir = os.path.join(files_dir, f'{website_name}.html')
+    with open(target_dir, "w", encoding="utf-8") as f:
         f.write(product_item.prettify())
         f.write("\n\n<!-- ====== NEXT ITEM ====== -->\n\n")
         f.flush()
         os.fsync(f.fileno())
 
-def extract_data_from_html(website, product: dict, company: str = "debug"):
+def extract_data_from_html(website, filepath, product: dict, website_name: str = "debug"):
     try:
 
-        with open(f"{company}.html", "r", encoding="utf-8") as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             html = f.read()
 
         # Parse it with BeautifulSoup
@@ -130,7 +132,7 @@ def extract_data_from_html(website, product: dict, company: str = "debug"):
 
         # Try different experiments here
         print("[DEBUG] Trying to find all product titles:\n")
-        print("\n===NEW COMPANY===\n")
+        print("\n===NEW website===\n")
 
         # TODO: title
         title_tags = soup.select(website['title_selector'])
@@ -190,7 +192,7 @@ def extract_data_from_html(website, product: dict, company: str = "debug"):
                 print("[DEBUG] URL:", href)
             # for relative URLs, prepend the base URL
             elif href.startswith("/"):
-                url = f"https://www.{company.lower()}.com" + href
+                url = f"https://www.{website_name.lower()}.com" + href
                 product["url"] = url
                 print("[DEBUG] URL:", url)
             else:
@@ -202,7 +204,7 @@ def extract_data_from_html(website, product: dict, company: str = "debug"):
 
         print()
         # TODO: rating
-        if company == "Walmart":
+        if website_name == "Walmart":
             for span in soup.select(website['rating_selector']):
                 if span and span.text:
                     if "out of 5 Stars" in span.text:
@@ -256,29 +258,37 @@ def extract_data_from_html(website, product: dict, company: str = "debug"):
         print(f"[ERROR] Failed to extract data: {str(e)}")
 
 
-from config import SITES
-from bs_scrape import write_html_with_bs
+from .config import SITES
+from .bs_scrape import write_html_with_bs
 from fastapi.responses import PlainTextResponse
+from .extract_with_llm import use_llm
 
 @app.get("/scrape", response_class=PlainTextResponse)
 def scrape(query: str = Query(..., description="Product name")):
     query = query.strip().replace(' ', '+')
     products = []
 
+    # Create a directory to store scraped HTML files
+    backend_dir = os.path.dirname(__file__) # Get the directory where the current script (main.py) lives
+    files_dir = os.path.join(backend_dir, "scraped_html_files")
+    os.makedirs(files_dir, exist_ok=True)  # Create the directory if it doesn't exist
+
     for website in SITES:
         product = {"name": website['site_name']}
         url = website['url_template'].format(query=query)
         print("[DEBUG] Website config:", website)
 
-        company = website['site_name'].split('.')[0]
+        website_name = website['site_name'].split('.')[0]
+        filepath = os.path.join(files_dir, f"{website_name}.html")
 
-        if company in {"Amazon", "Walmart"}:
-            write_html_with_bs(company, url, website['html_selector'])
+        if website_name in {"Amazon", "Walmart"}:
+            write_html_with_bs(website_name, files_dir, url, website['html_selector'])
         else:
             html = fetch_html_with_scroll(website, url)
-            write_html_to_file(website, html, company)
+            write_html_to_file(website, files_dir, html, website_name)
 
-        extract_data_from_html(website, product, company)
+        # extract_data_from_html(website, filepath, product, website_name)
+        use_llm(product, website_name)
         products.append(product)
 
     output_lines = []
@@ -290,6 +300,6 @@ def scrape(query: str = Query(..., description="Product name")):
         output_lines.append(f"rating: {p.get('rating', '')}")
         output_lines.append(f"reviews: {p.get('reviews', '')}")
         output_lines.append(f"url: {p.get('url', '')}")
-        output_lines.append("\n##### NEXT COMPANY #####\n")  # Blank line between products
+        output_lines.append("\n##### NEXT website #####\n")  # Blank line between products
 
     return "\n".join(output_lines)

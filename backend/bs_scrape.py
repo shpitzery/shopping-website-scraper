@@ -1,5 +1,6 @@
 import requests
 import random
+import os
 from bs4 import BeautifulSoup
 
 # Device profiles for anti-detection
@@ -53,7 +54,7 @@ def get_headers():
         })
     return headers
 
-def write_html_with_bs(company, url, selector):
+def write_html_with_bs(company, files_dir, url, selector):
     headers = get_headers()
     response = requests.get(url, headers=headers, timeout=15)
     if response.status_code != 200:
@@ -61,6 +62,8 @@ def write_html_with_bs(company, url, selector):
     
     bs = BeautifulSoup(response.text, 'html.parser')
     soup = bs.select_one(selector)
-    with open(f"{company}.html", "w", encoding="utf-8") as f:
+    target_dir = os.path.join(files_dir, f'{company}.html')
+
+    with open(target_dir, "w", encoding="utf-8") as f:
         f.write(soup.prettify())
         f.write("\n\n<!-- ====== NEXT ITEM ====== -->\n\n")
