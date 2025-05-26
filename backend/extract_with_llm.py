@@ -55,7 +55,7 @@ Now extract the {attr} from this HTML:
 """
 
 load_dotenv()
-api_key = os.getenv("API_KEY")
+api_key = os.getenv("OPENROUTER_KEY")
 
 def extract_product_info(html_text, attr=None):
     if not attr:
@@ -97,14 +97,17 @@ def read_html_file(website_name):
 
     return html_content
 
+
 def parse_as_json(cleaned):
-    try:
-        print(cleaned,'\n')
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        print("⚠️ Could not parse JSON")
-        print(cleaned)
-        return {}
+  try:
+      # Replace any integer with more than 1000 digits to prevent crash
+      cleaned = re.sub(r'\d{1000,}', '"[NUMBER_TOO_LARGE]"', cleaned)
+      print(cleaned, '\n')
+      return json.loads(cleaned)
+  except json.JSONDecodeError:
+      print("⚠️ Could not parse JSON")
+      print(cleaned)
+      return {}
 
 # if __name__ == "__main__": completion
 def use_llm(product, website_name):

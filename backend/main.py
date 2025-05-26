@@ -13,8 +13,18 @@ import time
 import re
 import os
 import tempfile
+from fastapi.middleware.cors import CORSMiddleware
+
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def clean_text(text):
     if not text:
@@ -262,9 +272,10 @@ from .config import SITES
 from .bs_scrape import write_html_with_bs
 from fastapi.responses import PlainTextResponse
 from .extract_with_llm import use_llm
+from .extract_firecrawl import firecrawl_main
 
-@app.get("/scrape", response_class=PlainTextResponse)
-def scrape(query: str = Query(..., description="Product name")):
+@app.get("/scrape")
+def scrape(button, query: str = Query(..., description="Product name")):
     query = query.strip().replace(' ', '+')
     products = []
 
@@ -281,14 +292,22 @@ def scrape(query: str = Query(..., description="Product name")):
         website_name = website['site_name'].split('.')[0]
         filepath = os.path.join(files_dir, f"{website_name}.html")
 
-        if website_name in {"Amazon", "Walmart"}:
-            write_html_with_bs(website_name, files_dir, url, website['html_selector'])
-        else:
-            html = fetch_html_with_scroll(website, url)
-            write_html_to_file(website, files_dir, html, website_name)
+        if button == "firecrawl":
+            firecrawl_url = f"https://www.{website_name.lower()}.com/*"
+            firecrawl_main(product, query, firecrawl_url)
 
-        # extract_data_from_html(website, filepath, product, website_name)
-        use_llm(product, website_name)
+        else:
+            if website_name in {"Amazon", "Walmart"}:
+                write_html_with_bs(website_name, files_dir, url, website['html_selector'])
+            else:
+                html = fetch_html_with_scroll(website, url)
+                write_html_to_file(website, files_dir, html, website_name)
+
+            if button == "basic":
+                extract_data_from_html(website, filepath, product, website_name)
+            else:
+                use_llm(product, website_name)
+
         products.append(product)
 
     output_lines = []
@@ -302,4 +321,4 @@ def scrape(query: str = Query(..., description="Product name")):
         output_lines.append(f"url: {p.get('url', '')}")
         output_lines.append("\n##### NEXT website #####\n")  # Blank line between products
 
-    return "\n".join(output_lines)
+    return products
